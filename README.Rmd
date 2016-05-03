@@ -1,0 +1,267 @@
+---
+title: "Network Analysis"
+author: "Asaf Eliyahu & Einat Edelstien"
+date: "April 13, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(igraph) 
+ga.data <- read.csv('ga_edgelist.csv', header=TRUE) 
+g <- graph.data.frame(ga.data, directed=FALSE) 
+
+library(twitteR)
+library(tm)
+library(plyr)
+library(ggplot2)
+consumerKey <- 'd9Ie2YnVqLCJQZInCe59iEd7G'
+consumerSecret <- 'j7Hjsz4Lza7D8MyrlkpPiSAA9Vtxu0fp0bCBRZa186Hw0jyIBa'
+accessToken <- '718353560489095168-YtKnMnbcpPnvWH6du6SDhdtS9ecbHg9'
+accessTokenSecret <- 'REOHKpbejvg6si5jXNJDffEbCLrRc9i9oaOv3X5FpWRoL'
+twitteR::setup_twitter_oauth(consumerKey,consumerSecret,accessToken,accessTokenSecret)
+```
+
+## Part 1 - Grey's Anatomy Network Analysis
+
+```{r , echo=FALSE}
+g$layout <- layout.fruchterman.reingold(g) 
+plot(g)
+#V(g)$label <- NA # remove labels
+V(g)$size <- degree(g) * 2 # multiply by 2 for scale 
+```
+
+### Betweenness
+
+The vertex with higest betweenness centrality is **Sloan - 115.3667**
+
+```{r , echo=FALSE}
+btw <- betweenness(g)
+btw.score <- round(btw) + 1 
+btw.colors <- rev(heat.colors(max(btw.score))) 
+V(g)$color <- btw.colors[ btw.score ] 
+plot(g)
+btw
+max(btw)
+```
+
+### Closeness
+
+The vertex with higest closeness centrality is **torres - 0.003194888**
+
+```{r , echo=FALSE}
+clo <- closeness(g) 
+clo.score <- round( (clo - min(clo)) * length(clo) / max(clo) ) + 1 
+clo.colors <- rev(heat.colors(max(clo.score))) 
+V(g)$color <- clo.colors[ clo.score ] 
+plot(g)
+clo
+max(clo) #torres - 0.003194888
+```
+
+### Eigenvector
+
+The vertex with higest eigenvector centrality is **karev - 1**
+
+```{r , echo=FALSE}
+evc <- evcent(g)
+evc.score <- round(evc$value) + 1 
+evc.colors <- rev(heat.colors(max(evc.score))) 
+V(g)$color <- evc.colors[ evc.score ] 
+plot(g)
+evc$vector
+max(evc$vector)
+```
+
+
+
+###Community structure detection
+
+#### Community strucure via short random walks
+```{r , echo=FALSE}
+fc <- walktrap.community(g)
+memb <- cutat(fc, steps = 5)
+memb
+sizes(fc)
+layout1 <- layout.fruchterman.reingold(g)
+plot(g, layout=layout1, vertex.color=memb+1, asp=FALSE)
+```
+
+The modularity of the community structure of a graph is 
+
+```{r , echo=FALSE}
+fc$modularity
+max(fc$modularity)
+```
+
+#### Girvan-Newman community detection algorithm
+```{r , echo=FALSE}
+fc <- edge.betweenness.community(g)
+memb <- cutat(fc, steps = 5)
+memb
+sizes(fc)
+plot(g, layout=layout1, vertex.color=memb+1, asp=FALSE)
+```
+
+The modularity of the community structure of a graph is 
+
+```{r , echo=FALSE}
+fc$modularity
+max(fc$modularity)
+```
+<br /><br />
+
+## Part 2 - Java Network Analysis
+For part 2 we choose web crawling and used a Twitter text data collected
+from tweets about JAVA.
+
+Here is the code we used for crawling and to build the document-term matrix.
+We then plotted the graph to show the relationship between
+frequent terms.
+
+```{r , echo=TRUE}
+programmingTwitts <- searchTwitter('java', n = 5, lang = 'en', resultType = "popular")
+
+programmingTwitts_text <- sapply(programmingTwitts, function(x) x$getText())
+
+programmingTwitts_text <- gsub("(f|ht)tp(s?)://(.*)[.][a-z]+", "", programmingTwitts_text)
+programmingTwitts_text <- gsub(" /.+$", "", programmingTwitts_text)
+programmingTwitts_text <- gsub(" @.+ ", "", programmingTwitts_text)
+programmingTwitts_corpus <- Corpus(VectorSource(programmingTwitts_text))
+
+programmingTwitts_corpus_clean <- tm_map(programmingTwitts_corpus, removePunctuation)
+programmingTwitts_corpus_clean <- tm_map(programmingTwitts_corpus_clean, removeWords, stopwords("english"))
+programmingTwitts_corpus_clean <- tm_map(programmingTwitts_corpus_clean, removeWords, c("the","a","http", "via", "you", "are", "an", "also", "however", "may", "this"))
+programmingTwitts_corpus_clean <- tm_map(programmingTwitts_corpus_clean, removeNumbers)
+programmingTwitts_corpus_clean <- tm_map(programmingTwitts_corpus_clean, stripWhitespace)
+
+tdm <- TermDocumentMatrix(programmingTwitts_corpus_clean)
+
+tdm1 <- tdm
+
+tm <- as.matrix(tdm1)
+
+tdm2 <- tm %*% t(tm)
+
+g <- graph.adjacency(tdm2, weighted=T, mode="undirected")
+
+plot(g)
+
+#vcount(g)
+#ecount(g)
+
+g <- simplify(g)
+
+
+V(g)$label <- V(g)$name
+V(g)$degree <- degree(g)
+set.seed(3952)
+layout1 <- layout.fruchterman.reingold(g)
+
+V(g)$label.cex <- 2.2* V(g)$degree / max(V(g)$degree) + .2
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+
+egam <- (log(E(g)$weight)+.4) / max(log(E(g)$weight)+.4)
+E(g)$color <- rgb(.5, .5, 0, egam)
+E(g)$width <- egam
+
+```
+
+
+### Betweenness
+
+The vertex with higest betweenness centrality is **Java - 615**
+
+```{r , echo=FALSE}
+btw <- betweenness(g)
+btw.score <- round(btw) + 1 
+btw.colors <- rev(heat.colors(max(btw.score))) 
+V(g)$color <- btw.colors[ btw.score ] 
+plot(g)
+btw
+max(btw)
+```
+
+### Closeness
+
+The vertex with higest closeness centrality is **Java - 0.02040816**
+
+```{r , echo=FALSE}
+clo <- closeness(g) 
+clo.score <- round( (clo - min(clo)) * length(clo) / max(clo) ) + 1 
+clo.colors <- rev(heat.colors(max(clo.score))) 
+V(g)$color <- clo.colors[ clo.score ] 
+plot(g)
+clo
+max(clo) 
+```
+
+### Eigenvector
+
+The vertex with higest eigenvector centrality is **Java - 1**
+
+```{r , echo=FALSE}
+evc <- evcent(g)
+evc.score <- round(evc$value) + 1 
+evc.colors <- rev(heat.colors(max(evc.score))) 
+V(g)$color <- evc.colors[ evc.score ] 
+plot(g)
+evc$vector
+max(evc$vector)
+```
+
+
+###Community structure detection
+
+#### Community strucure via short random walks
+```{r , echo=FALSE}
+fc <- fc <- walktrap.community(g)
+memb <- cutat(fc, steps = 5)
+memb
+sizes(fc)
+plot(g, layout=layout1, vertex.color=memb+1, asp=FALSE)
+```
+
+The modularity of the community structure of a graph is 
+
+```{r , echo=FALSE}
+fc$modularity
+max(fc$modularity)
+```
+
+
+#### Girvan-Newman community detection algorithm
+```{r , echo=FALSE}
+fc <- edge.betweenness.community(g)
+memb <- cutat(fc, steps = 5)
+memb
+sizes(fc)
+plot(g, layout=layout1, vertex.color=memb+1, asp=FALSE)
+```
+
+The modularity of the community structure of a graph is 
+
+```{r , echo=FALSE}
+fc$modularity
+max(fc$modularity)
+```
+
+
+#### Community structure via greedy optimization of modularity
+```{r , echo=FALSE}
+fc <-  fastgreedy.community(g)
+memb <- cutat(fc, steps = 5)
+memb
+sizes(fc)
+plot(g, layout=layout1, vertex.color=memb+1, asp=FALSE)
+```
+
+The modularity of the community structure of a graph is 
+
+```{r , echo=FALSE}
+fc$modularity
+max(fc$modularity)
+```
+
+
+
